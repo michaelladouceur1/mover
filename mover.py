@@ -38,19 +38,22 @@ class TDAPI:
         return self.client.movers(index, direction, change_type)
 
 class Account:
-    def __init__(self, refresh_rate=5, entry_time=[8,30]):
+    def __init__(self, refresh_rate=5, entry_time=[23,30]):
         # Account data
         self.account = self.account()
-        self.account_number = self.account_number()
-        self.buying_power = self.buying_power()
-        self.equity = self.equity()
+
+        # Position data
+        self.positions = self.positions()
+
+        # Order data
+        self.orders = self.orders()
 
         # Trade parameters
         self.entry_time = dt.time(*entry_time)
         self.max_cap_perc = 0.2
         self.max_cap_alloc = self.buying_power*self.max_cap_perc
-        self.profit_limit = 0.02
-        self.loss_limit = 0.01
+        self.profit_limit = 0.10
+        self.loss_limit = -0.02
 
         # TDA Client
         self.tda = TDAPI()
@@ -61,27 +64,74 @@ class Account:
         self.ref_rate = refresh_rate
         # self.timer(_timer=self._timer, ref_rate=self.ref_rate)
 
+    def log_trade(self, action, sym, qty, type, target_price=None):
+        with open(f'{action}.txt', 'a') as f:
+            f.write(f'{action}: ({sym}, {qty}, {type}, {target_price})')
+
+
     # CHANGE TO DECORATOR #
     def timer(self, _timer, ref_rate):
         if not _timer.is_set():
-            print('TIMED')
+            print(f'Timer called at {dt.datetime.now().time()}')
             threading.Timer(ref_rate, self.timer, [_timer, ref_rate]).start()
+            self.account = self.account()
+            self.positions = self.positions()
+            self.orders = self.orders()
             self.run()
     
+
+    # Account functions
     def account(self):
         r = requests.get(ACCOUNT_URL, headers=HEADERS)
         return json.loads(r.content)
 
+    @property
     def account_number(self):
         return self.account['account_number']
 
+    @property
     def buying_power(self):
         return float(self.account['buying_power'])
 
+    @property
     def equity(self):
         return float(self.account['equity'])
 
-    def order(self, symbol, qty, side, type, time_in_force, limit_price):
+
+    # Position functions
+    def positions(self):
+        r = requests.get(POSITION_URL, headers=HEADERS)
+        return json.loads(r.content)
+
+    @property
+    def position_symbols(self):
+        syms = []
+        for i in self.positions:
+            syms.append(i['symbol'])
+        return syms
+
+    @property
+    def position_asset_ids(self):
+        ids = []
+        for i in self.positions:
+            ids.append(i['asset_id'])
+        return ids
+
+
+    # Order functions
+    def orders(self):
+        r = requests.get(ORDER_URL, headers=HEADERS)
+        return json.loads(r.content)
+
+    @property
+    def order_asset_ids(self):
+        ids = []
+        for i in self.orders:
+            ids.append(i['asset_id'])
+        return ids
+
+
+    def order(self, symbol, qty, side, type, time_in_force, limit_price=None):
         data = {
             'symbol': symbol,
             'qty': qty,
@@ -113,21 +163,26 @@ class Account:
 
         movers = sorted(movers, key=lambda k: k['change'], reverse=True)
 
+        # Buy movers
         for i in movers:
             sym = i['symbol']
             target_price = i['last']
-            if target_price < self.buying_power:
+            if (target_price < self.buying_power) and (i not in self.position_symbols):
                 qty = round(self.max_cap_alloc/target_price)
                 self.order(sym,qty,'buy','limit','day',target_price)
+                self.log_trade('buy',sym,qty,'limit',target_price)
+
+        # Sell movers
+        for i in self.positions:
+            if float(i['unrealized_plpc']) < self.loss_limit:
+                self.order(i['asset_id'],i['qty'],'sell','market','day')
+                self.log_trade('sell',i['symbol'],i['qty'],'market')
+            elif 
             
 
 
 acc = Account()
-print(acc.max_cap_alloc)
-# print(acc.account)
-# print(acc.account_number)
-# print(acc.buying_power)
-# print(acc.equity)
-# print('\n\n')
+print(acc.equity)
+
 # tda = TDAPI()
 # print(tda.get_movers('$COMPX'))
