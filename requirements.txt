@@ -6,7 +6,7 @@ idna==2.9
 ipython==7.16.1
 ipython-genutils==0.2.0
 jedi==0.17.1
-numpy==1.19.0
+numpy==1.22.0
 pandas==1.0.5
 parso==0.7.0
 pexpect==4.8.0
